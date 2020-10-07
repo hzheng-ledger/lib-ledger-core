@@ -30,7 +30,6 @@
  */
 
 #include <api/ConfigurationDefaults.hpp>
-#include <utils/FilesystemUtils.hpp>
 #include "BaseFixture.h"
 #include "IntegrationEnvironment.h"
 #include <utils/hex.h>
@@ -157,7 +156,7 @@ void BaseFixture::SetUp() {
 
 void BaseFixture::TearDown() {
     ::testing::Test::TearDown();
-    qDebug() << "TEAR DOWN";
+    std::cout << "TEAR DOWN" << std::endl;
     resolver->clean();
 }
 
