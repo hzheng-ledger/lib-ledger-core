@@ -623,7 +623,7 @@ namespace ledger {
             broadcastRawTransaction(transaction->serialize(), callback);
         }
 
-        std::shared_ptr<api::BitcoinLikeTransactionBuilder> BitcoinLikeAccount::buildTransaction(bool partial) {
+        std::shared_ptr<api::BitcoinLikeTransactionBuilder> BitcoinLikeAccount::buildTransaction(std::experimental::optional<bool> partial) {
             auto self = std::dynamic_pointer_cast<BitcoinLikeAccount>(shared_from_this());
             auto getUTXO = [=]() -> Future<std::vector<BitcoinLikeUtxo>> {
                 return Future<std::vector<BitcoinLikeUtxo>>::async(getContext(), [=]() {

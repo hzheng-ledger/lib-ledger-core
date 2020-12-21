@@ -133,13 +133,77 @@ namespace ledger {
         bool CommonBitcoinLikeKeychains::isEmpty() const {
             return _state.empty;
         }
-
+        //TODO the two following methods are similar. Merge them if possible
         std::vector<BitcoinLikeKeychain::Address> CommonBitcoinLikeKeychains::getAllObservableAddresses(uint32_t from, uint32_t to) {
-            return deriveInBulk(from, to);
+            auto currency = getCurrency();
+            std::vector<BitcoinLikeKeychain::Address> res;
+            res.reserve((to - from + 1) * 2);
+            auto preferencesEdit = getPreferences()->edit();
+            bool hasDBChange = false;
+            for (int iPurpose : {KeyPurpose::RECEIVE, KeyPurpose::CHANGE})
+            {
+                for (int index = from; index <= to; index++)
+                {
+                    auto localPath = getDerivationScheme()
+                        .setAccountIndex(getAccountIndex())
+                        .setCoinType(currency.bip44CoinType)
+                        .setNode(iPurpose).setAddressIndex(index).getPath().toString();
+                    auto cacheKey = fmt::format("path:{}", localPath);
+                    auto address = getPreferences()->getString(cacheKey, "");
+
+                    if (address.empty()) {
+                        auto xpub = iPurpose == KeyPurpose::RECEIVE ? _publicNodeXpub : _internalNodeXpub;
+                        auto p = getDerivationScheme().getSchemeFrom(DerivationSchemeLevel::NODE).shift(1)
+                            .setAccountIndex(getAccountIndex())
+                            .setCoinType(currency.bip44CoinType)
+                            .setNode(iPurpose).setAddressIndex(index).getPath().toString();
+                        address = BitcoinLikeAddress::fromPublicKey(xpub, currency, p, _keychainEngine);
+                        preferencesEdit = preferencesEdit->putString(cacheKey, address)->putString(fmt::format("address:{}", address), localPath);
+                        hasDBChange = true;
+                    }
+                    res.emplace_back(std::dynamic_pointer_cast<BitcoinLikeAddress>(BitcoinLikeAddress::parse(address, getCurrency(), Option<std::string>(localPath))));
+                }
+            }
+            if (hasDBChange) {
+                preferencesEdit->commit();
+            }
+            return res;
         }
 
         std::vector<std::string> CommonBitcoinLikeKeychains::getAllObservableAddressString(uint32_t from, uint32_t to) {
-            return deriveInBulkAddressString(from, to);
+            auto currency = getCurrency();
+            std::vector<std::string> res;
+            res.reserve((to - from + 1) * 2);
+            auto preferencesEdit = getPreferences()->edit();
+            bool hasDBChange = false;
+            for (int index = from; index <= to; index++)
+            {
+                for (int iPurpose : {KeyPurpose::RECEIVE, KeyPurpose::CHANGE})
+                {
+                    auto localPath = getDerivationScheme()
+                        .setAccountIndex(getAccountIndex())
+                        .setCoinType(currency.bip44CoinType)
+                        .setNode(iPurpose).setAddressIndex(index).getPath().toString();
+                    auto p = getDerivationScheme().getSchemeFrom(DerivationSchemeLevel::NODE).shift(1)
+                        .setAccountIndex(getAccountIndex())
+                        .setCoinType(currency.bip44CoinType)
+                        .setNode(iPurpose).setAddressIndex(index).getPath().toString();
+                    auto cacheKey = fmt::format("path:{}", localPath);
+                    auto address = getPreferences()->getString(cacheKey, "");
+
+                    if (address.empty()) {
+                        auto xpub = iPurpose == KeyPurpose::RECEIVE ? _publicNodeXpub : _internalNodeXpub;
+                        address = BitcoinLikeAddress::fromPublicKey(xpub, currency, p, _keychainEngine);
+                        preferencesEdit = preferencesEdit->putString(cacheKey, address)->putString(fmt::format("address:{}", address), localPath);
+                        hasDBChange = true;
+                    }
+                    res.emplace_back(address);
+                }
+            }
+            if (hasDBChange) {
+                preferencesEdit->commit();
+            }
+            return res;
         }
 
         std::vector<BitcoinLikeKeychain::Address>
@@ -277,78 +341,6 @@ namespace ledger {
                         ->commit();
             }
             return std::dynamic_pointer_cast<BitcoinLikeAddress>(BitcoinLikeAddress::parse(address, getCurrency(), Option<std::string>(localPath)));
-        }
-
-        std::vector<BitcoinLikeKeychain::Address> CommonBitcoinLikeKeychains::deriveInBulk(uint32_t from, uint32_t to) {
-            auto currency = getCurrency();
-            std::vector<BitcoinLikeKeychain::Address> res;
-            res.reserve((to - from + 1) * 2);
-            auto preferencesEdit = getPreferences()->edit();
-            bool hasDBChange = false;
-            for (int iPurpose : {KeyPurpose::RECEIVE, KeyPurpose::CHANGE})
-            {
-                for (int index = from; index <= to; index++)
-                {
-                    auto localPath = getDerivationScheme()
-                        .setAccountIndex(getAccountIndex())
-                        .setCoinType(currency.bip44CoinType)
-                        .setNode(iPurpose).setAddressIndex(index).getPath().toString();
-                    auto cacheKey = fmt::format("path:{}", localPath);
-                    auto address = getPreferences()->getString(cacheKey, "");
-
-                    if (address.empty()) {
-                        auto xpub = iPurpose == KeyPurpose::RECEIVE ? _publicNodeXpub : _internalNodeXpub;
-                        auto p = getDerivationScheme().getSchemeFrom(DerivationSchemeLevel::NODE).shift(1)
-                            .setAccountIndex(getAccountIndex())
-                            .setCoinType(currency.bip44CoinType)
-                            .setNode(iPurpose).setAddressIndex(index).getPath().toString();
-                        address = BitcoinLikeAddress::fromPublicKey(xpub, currency, p, _keychainEngine);
-                        preferencesEdit = preferencesEdit->putString(cacheKey, address)->putString(fmt::format("address:{}", address), localPath);
-                        hasDBChange = true;
-                    }
-                    res.emplace_back(std::dynamic_pointer_cast<BitcoinLikeAddress>(BitcoinLikeAddress::parse(address, getCurrency(), Option<std::string>(localPath))));
-                }
-            }
-            if (hasDBChange) {
-                preferencesEdit->commit();
-            }
-            return res;
-        }
-
-        std::vector<std::string> CommonBitcoinLikeKeychains::deriveInBulkAddressString(uint32_t from, uint32_t to) {
-            auto currency = getCurrency();
-            std::vector<std::string> res;
-            res.reserve((to - from + 1) * 2);
-            auto preferencesEdit = getPreferences()->edit();
-            bool hasDBChange = false;
-            for (int index = from; index <= to; index++)
-            {
-                for (int iPurpose : {KeyPurpose::RECEIVE, KeyPurpose::CHANGE})
-                {                    
-                    auto localPath = getDerivationScheme()
-                        .setAccountIndex(getAccountIndex())
-                        .setCoinType(currency.bip44CoinType)
-                        .setNode(iPurpose).setAddressIndex(index).getPath().toString();
-                    auto p = getDerivationScheme().getSchemeFrom(DerivationSchemeLevel::NODE).shift(1)
-                        .setAccountIndex(getAccountIndex())
-                        .setCoinType(currency.bip44CoinType)
-                        .setNode(iPurpose).setAddressIndex(index).getPath().toString();
-                    auto cacheKey = fmt::format("path:{}", localPath);
-                    auto address = getPreferences()->getString(cacheKey, "");
-
-                    if (address.empty()) {
-                        auto xpub = iPurpose == KeyPurpose::RECEIVE ? _publicNodeXpub : _internalNodeXpub;
-                        address = BitcoinLikeAddress::fromPublicKey(xpub, currency, p, _keychainEngine);
-                        preferencesEdit = preferencesEdit->putString(cacheKey, address)->putString(fmt::format("address:{}", address), localPath);
-                        hasDBChange = true;
-                    }
-                    res.emplace_back(address);
-                }
-            }
-            if (hasDBChange) {
-                preferencesEdit->commit();
-            }
-            return res;
         }
     }
 }

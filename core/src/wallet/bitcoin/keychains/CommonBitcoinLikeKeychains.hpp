@@ -95,8 +95,6 @@ namespace ledger {
 
         private:
             BitcoinLikeKeychain::Address derive(KeyPurpose purpose, off_t index);
-            std::vector<std::string> deriveInBulkAddressString(uint32_t from, uint32_t to);
-            std::vector<BitcoinLikeKeychain::Address> deriveInBulk(uint32_t from, uint32_t to);
             void saveState();
             KeychainPersistentState _state;
             std::shared_ptr<api::BitcoinLikeExtendedPublicKey> _xpub;
