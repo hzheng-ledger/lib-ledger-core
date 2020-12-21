@@ -75,6 +75,8 @@ namespace ledger {
 
             std::vector<Address> getAllObservableAddresses(uint32_t from, uint32_t to);
 
+            std::vector<std::string> getAllObservableAddressString(uint32_t from, uint32_t to);
+
             Address getAddress() const;
 
             Option<std::string> getAddressDerivationPath(const std::string &address) const;
@@ -103,7 +105,8 @@ namespace ledger {
             int32_t getOutputSizeAsSignedTxInput() const;
 
             std::shared_ptr<Preferences> getPreferences() const;
-        protected:
+
+        protected:            
 
             DerivationScheme &getDerivationScheme();
 

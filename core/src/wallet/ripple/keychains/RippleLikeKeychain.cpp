@@ -126,11 +126,12 @@ namespace ledger {
 
         std::vector<RippleLikeKeychain::Address>
         RippleLikeKeychain::getAllObservableAddresses(uint32_t from, uint32_t to) {
-            std::vector<RippleLikeKeychain::Address> result;
-            result.push_back(derive());
-            return result;
+            return {derive()};
         }
 
+        std::vector<std::string> RippleLikeKeychain::getAllObservableAddressString(uint32_t from, uint32_t to) {
+            return {derive()->toString()};
+        }
 
         std::shared_ptr<api::RippleLikeExtendedPublicKey> RippleLikeKeychain::getExtendedPublicKey() const {
             return _xpub;

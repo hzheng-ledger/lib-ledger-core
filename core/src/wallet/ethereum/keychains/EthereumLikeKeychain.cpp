@@ -125,11 +125,13 @@ namespace ledger {
 
         std::vector<EthereumLikeKeychain::Address>
         EthereumLikeKeychain::getAllObservableAddresses(uint32_t from, uint32_t to) {
-            std::vector<EthereumLikeKeychain::Address> result;
-            result.push_back(derive());
-            return result;
+            return { derive() };
         }
 
+        std::vector<std::string>
+            EthereumLikeKeychain::getAllObservableAddressString(uint32_t from, uint32_t to) {
+            return { derive()->toString() };
+        }
 
         std::shared_ptr<api::EthereumLikeExtendedPublicKey> EthereumLikeKeychain::getExtendedPublicKey() const {
             return _xpub;

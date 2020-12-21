@@ -80,6 +80,10 @@ std::vector<CosmosLikeKeychain::Address> CosmosLikeKeychain::getAllObservableAdd
     return {_address};
 }
 
+std::vector<std::string> CosmosLikeKeychain::getAllObservableAddressString(uint32_t from, uint32_t to) {
+    return { _address->toString() };
+}
+
 std::shared_ptr<CosmosLikeKeychain> CosmosLikeKeychain::restore(
     const DerivationPath &path, const api::Currency &currency, const std::string &restoreKey)
 {

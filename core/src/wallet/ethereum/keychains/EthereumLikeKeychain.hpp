@@ -71,6 +71,7 @@ namespace ledger {
                                  const std::string &accountAddress,
                                  const std::shared_ptr<Preferences>& preferences);
             std::vector<Address> getAllObservableAddresses(uint32_t from, uint32_t to);
+            std::vector<std::string> getAllObservableAddressString(uint32_t from, uint32_t to);
             Address getAddress() const;
             Option<std::string> getAddressDerivationPath(const std::string &address) const ;
             std::shared_ptr<api::EthereumLikeExtendedPublicKey> getExtendedPublicKey() const;
@@ -90,8 +91,7 @@ namespace ledger {
             bool contains(const std::string& address) const ;
             int32_t getOutputSizeAsSignedTxInput() const ;
             std::shared_ptr<Preferences> getPreferences() const;
-
-        protected:
+        protected:            
             DerivationScheme& getDerivationScheme();
 
         private:
