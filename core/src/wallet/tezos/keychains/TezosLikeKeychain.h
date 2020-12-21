@@ -60,6 +60,8 @@ namespace ledger {
 
             std::vector <Address> getAllObservableAddresses(uint32_t from, uint32_t to);
 
+            std::vector<std::string> getAllObservableAddressString(uint32_t from, uint32_t to);
+
             Address getAddress() const;
 
             const api::TezosLikeNetworkParameters &getNetworkParameters() const;
@@ -75,6 +77,7 @@ namespace ledger {
             bool contains(const std::string &address) const;
 
             std::shared_ptr <Preferences> getPreferences() const;
+
         protected:
 
         private:

@@ -72,7 +72,11 @@ namespace ledger {
 
         std::vector <TezosLikeKeychain::Address>
         TezosLikeKeychain::getAllObservableAddresses(uint32_t from, uint32_t to) {
-            return std::vector<TezosLikeKeychain::Address>{getAddressFromPublicKey()};
+            return {getAddressFromPublicKey()};
+        }
+
+        std::vector <std::string> TezosLikeKeychain::getAllObservableAddressString(uint32_t from, uint32_t to) {
+            return {getAddressFromPublicKey()->toString()};
         }
 
         std::string TezosLikeKeychain::getRestoreKey() const {

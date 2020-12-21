@@ -175,6 +175,7 @@ namespace ledger {
                 return std::make_shared<SynchronizationBuddy>();
             }
 
+
             Future<Unit> performSynchronization(const std::shared_ptr<Account> &account) {
                 auto buddy = makeSynchronizationBuddy();
                 buddy->account = account;
@@ -229,27 +230,23 @@ namespace ledger {
                         }
                     }
                 }
-
                 initializeSavedState(buddy->savedState, buddy->halfBatchSize);
-
                 updateTransactionsToDrop(sql, buddy, account->getAccountUid());
-
                 updateCurrentBlock(buddy, account->getContext());
-
                 auto self = getSharedFromThis();
+                self->nb_tx = 0;
+                self->_addresses.clear();
                 const auto deactivateToken =
                         buddy->configuration->getBoolean(api::Configuration::DEACTIVATE_SYNC_TOKEN).value_or(false);
                 auto getSyncToken = deactivateToken ? Future<void *>::successful(nullptr) : _explorer->startSession();
-                auto keychainSizeKey = fmt::format("accountKeychainSize:{}", buddy->account->getIndex());
-                auto oldKeychainSize = buddy->keychain->getPreferences()->getLong(keychainSizeKey, 0);
                 return getSyncToken.template map<Unit>(account->getContext(), [buddy, deactivateToken] (void * const t) -> Unit {
                     buddy->logger->info("Synchronization token obtained");
                     if (!deactivateToken && t) {
                         buddy->token = Option<void *>(t);
                     }
                     return unit;
-                }).template flatMap<Unit>(account->getContext(), [buddy, self, oldKeychainSize](const Unit&) {
-                    return self->extendKeychain(buddy, oldKeychainSize);
+                }).template flatMap<Unit>(account->getContext(), [buddy, self] (const Unit&) {
+                    return self->extendKeychain(0, buddy);
                 }).template flatMap<Unit>(account->getContext(), [buddy, self] (const Unit&) {
                     return self->synchronizeBatches(0, buddy);
                 }).template flatMap<Unit>(account->getContext(), [self, buddy, deactivateToken] (const Unit&) {
@@ -288,56 +285,18 @@ namespace ledger {
                 });
             };
 
-            // extend the keychain to cover all the addresses(only for bitcoin)
-            Future<Unit> extendKeychain(std::shared_ptr<SynchronizationBuddy> buddy, const long& oldKeychainSize) {
-                if (buddy->wallet->getWalletType() != api::WalletType::BITCOIN) {
-                    return Future<Unit>::successful(unit);
-                }
-                auto self = getSharedFromThis();
-                if (oldKeychainSize > 0)
-                {
-                    // check whether the last batch in old keychain contains any transaction
-                    auto from = (std::max)((int)(oldKeychainSize - buddy->halfBatchSize), 0);
-                    auto to = oldKeychainSize - 1;
-                    auto batch = vector::map<std::string, std::shared_ptr<AddressType>>(
-                        buddy->keychain->getAllObservableAddresses(from, to),
-                        [](const std::shared_ptr<AddressType>& addr) -> std::string {
-                            return addr->toString();
-                        }
-                    );
-                    return _explorer->getTransactions(batch, optional<std::string>(), optional<void*>())
-                        .template flatMap<Unit>(buddy->account->getContext(), [self, oldKeychainSize, buddy](const std::shared_ptr<typename Explorer::TransactionsBulk>& bulk) -> Future<Unit> {
-                        if (bulk->transactions.size() > 0)
-                        {
-                            // extend the keychain from last position
-                            return self->extendKeychain(oldKeychainSize / buddy->halfBatchSize, buddy);
-                        }
-                        else
-                        {
-                            // last batch has no transaction, no need to extend the old keychain
-                            return Future<Unit>::successful(unit);
-                        }
-                    });
-                }
-                return self->extendKeychain(0, buddy); // extend keychain from 0 if oldKeychainSize = 0
-            }
-
-            Future<Unit> extendKeychain(uint32_t currentBatchIndex, std::shared_ptr<SynchronizationBuddy> buddy) {
+            Future<Unit> extendKeychain(uint32_t currentBatchIndex, std::shared_ptr<SynchronizationBuddy> buddy) {                
                 buddy->logger->info("Detecting addresses for batch {}", currentBatchIndex);
                 auto self = getSharedFromThis();
-                auto from = currentBatchIndex / 2 * buddy->halfBatchSize;
+                auto from = currentBatchIndex/2 * buddy->halfBatchSize;
                 auto to = (currentBatchIndex + 1) * buddy->halfBatchSize - 1;
                 buddy->logger->info("From address index {}", from);
-                buddy->logger->info("To address index {}", to);
-                buddy->keychain->getAllObservableAddresses(from, to);
-                auto batch = vector::map<std::string, std::shared_ptr<AddressType>>(
-                    buddy->keychain->getAllObservableAddresses((std::max)(from, to - buddy->halfBatchSize + 1), to),
-                    [](const std::shared_ptr<AddressType>& addr) -> std::string {
-                        return addr->toString();
-                    }
-                );
+                buddy->logger->info("To address index {}", to);                
+                auto batch = buddy->keychain->getAllObservableAddressString(from, to);
+                auto lastAddressesinBatch = std::vector<std::string>(batch.end()-2 * buddy->halfBatchSize, batch.end());
+                self->_addresses.insert(self->_addresses.end(), batch.begin(), batch.end());
 
-                return _explorer->getTransactions(batch, optional<std::string>(), optional<void*>())
+                return _explorer->getTransactions(lastAddressesinBatch, optional<std::string>(), optional<void*>())
                     .template flatMap<Unit>(buddy->account->getContext(), [self, currentBatchIndex, buddy, to](const std::shared_ptr<typename Explorer::TransactionsBulk>& bulk) -> Future<Unit> {
                     if (bulk->transactions.size() > 0)
                     {
@@ -345,13 +304,12 @@ namespace ledger {
                     }
                     else
                     {
-                        auto keychainSizeKey = fmt::format("accountKeychainSize:{}", buddy->account->getIndex());
-                        buddy->keychain->getPreferences()->edit()->putLong(keychainSizeKey, to + 1)->commit();
+                        if (to + 1 > 1000) // set batch size to maximum value(50) in case of huge keychain to increase performance
+                            buddy->halfBatchSize = 50;
                         return Future<Unit>::successful(unit);
                     }
                 });
             };
-
 
             // Synchronize batches.
             //
@@ -360,6 +318,7 @@ namespace ledger {
             Future<Unit> synchronizeBatches(uint32_t currentBatchIndex,
                                             std::shared_ptr<SynchronizationBuddy> buddy) {
                 buddy->logger->info("SYNC BATCHES");
+
                 //For ETH and XRP like wallets, one account corresponds to one ETH address,
                 //so ne need to discover other batches
                 auto hasMultipleAddresses = buddy->wallet->getWalletType() == api::WalletType::BITCOIN;
@@ -385,7 +344,7 @@ namespace ledger {
                     if (hasMultipleAddresses && (!done || (done && hadTransactions) || lastDiscoverableAddress > discoveredAddresses)) {
                         return self->synchronizeBatches(currentBatchIndex + 1, buddy);
                     }
-
+                    buddy->logger->info(self->nb_tx);
                     return Future<Unit>::successful(unit);
                 }).recoverWith(ImmediateExecutionContext::INSTANCE, [=] (const Exception &exception) -> Future<Unit> {
                     buddy->logger->info("Recovering from failing synchronization : {}", exception.getMessage());
@@ -500,7 +459,6 @@ namespace ledger {
                     std::shared_ptr<SynchronizationBuddy> buddy,
                     bool hadTransactions = false) {
                 buddy->logger->info("SYNC BATCH {}", currentBatchIndex);
-
                 Option<std::string> blockHash;
                 auto self = getSharedFromThis();
                 auto& batchState = buddy->savedState.getValue().batches[currentBatchIndex];
@@ -512,14 +470,9 @@ namespace ledger {
                 auto derivationBenchmark = std::make_shared<Benchmarker>("Batch derivation", buddy->logger);
                 derivationBenchmark->start();
 
-                auto batch = vector::map<std::string, std::shared_ptr<AddressType>>(
-                        buddy->keychain->getAllObservableAddresses((uint32_t) (currentBatchIndex * buddy->halfBatchSize),
-                                                                   (uint32_t) ((currentBatchIndex + 1) * buddy->halfBatchSize - 1)),
-                        [] (const std::shared_ptr<AddressType>& addr) -> std::string {
-                            return addr->toString();
-                        }
-                );
-
+                int from = currentBatchIndex * buddy->halfBatchSize *2;
+                int to = (currentBatchIndex + 1) * buddy->halfBatchSize *2;
+                auto batch = std::vector<std::string>(self->_addresses.begin() + from, min(self->_addresses.begin() + to, self->_addresses.end()));
                 derivationBenchmark->stop();
 
                 auto benchmark = std::make_shared<Benchmarker>("Get batch", buddy->logger);
@@ -535,6 +488,7 @@ namespace ledger {
                         auto& batchState = buddy->savedState.getValue().batches[currentBatchIndex];
                         soci::session sql(buddy->wallet->getDatabase()->getPool());
                         buddy->logger->info("Got {} txs for account {}", bulk->transactions.size(), buddy->account->getAccountUid());
+                        self->nb_tx += bulk->transactions.size();
                         auto count = 0;
                         for (const auto& tx : bulk->transactions) {
                             soci::transaction tr(sql);
@@ -629,6 +583,7 @@ namespace ledger {
             std::shared_ptr<ProgressNotifier<Unit>> _notifier;
             std::mutex _lock;
             std::shared_ptr<Account> _currentAccount;
+            std::vector<std::string> _addresses;
 
         private:
 
@@ -636,6 +591,7 @@ namespace ledger {
             virtual std::shared_ptr<api::ExecutionContext> getSynchronizerContext() = 0;
 
             std::shared_ptr<Preferences> _internalPreferences;
+            int nb_tx;
         };
     }
 }

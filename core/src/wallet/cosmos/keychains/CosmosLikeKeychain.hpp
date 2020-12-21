@@ -56,6 +56,7 @@ class CosmosLikeKeychain : public api::Keychain {
     std::string getRestoreKey() const;
     const std::vector<uint8_t> &getPublicKey() const;
     std::vector<Address> getAllObservableAddresses(uint32_t from, uint32_t to);
+    std::vector<std::string> getAllObservableAddressString(uint32_t from, uint32_t to);
 
     static std::shared_ptr<CosmosLikeKeychain> restore(
         const DerivationPath &path, const api::Currency &currency, const std::string &restoreKey);

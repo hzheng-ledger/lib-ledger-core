@@ -149,7 +149,7 @@ namespace ledger {
 
                     for (auto &io : txIo) {
                         if (io.address.hasValue()) {
-                            keychain->markAsUsed(io.address.getValue());
+                            keychain->markAsUsed(io.address.getValue(), false);
                             flag |= BitcoinLikeAccount::FLAG_TRANSACTION_CREATED_SENDING_OPERATION;
                         }
                     }
@@ -157,7 +157,7 @@ namespace ledger {
                 };
                 return markAddress(transaction.inputs) | markAddress(transaction.outputs);
             }
-            return buddy->account->putTransaction(sql, transaction);
+            return buddy->account->putTransaction(sql, transaction, false);
         }
 
         std::shared_ptr<CommonBuddy>
