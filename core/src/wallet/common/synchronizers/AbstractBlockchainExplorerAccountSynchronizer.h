@@ -101,18 +101,18 @@ namespace ledger {
         public:
             using Transaction = typename Explorer::Transaction;
 
-            std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> synchronizeAccount(const std::shared_ptr<Account>& account) {
+            std::shared_ptr<ProgressNotifier<Unit>> synchronizeAccount(const std::shared_ptr<Account>& account) {
                 std::lock_guard<std::mutex> lock(_lock);
                 if (!_currentAccount) {
                     _currentAccount = account;
-                    _notifier = std::make_shared<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>>();
+                    _notifier = std::make_shared<ProgressNotifier<Unit>>();
                     auto self = getSharedFromThis();
                     performSynchronization(account).onComplete(getSynchronizerContext(), [self] (auto const &result) {
                         std::lock_guard<std::mutex> l(self->_lock);
                         if (result.isFailure()) {
                             self->_notifier->failure(result.getFailure());
                         } else {
-                            self->_notifier->success(result.getValue());
+                            self->_notifier->success(unit);
                         }
                         self->_notifier = nullptr;
                         self->_currentAccount = nullptr;
@@ -565,7 +565,7 @@ namespace ledger {
 
 
             std::shared_ptr<Explorer> _explorer;
-            std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> _notifier;
+            std::shared_ptr<ProgressNotifier<Unit>> _notifier;
             std::mutex _lock;
             std::shared_ptr<Account> _currentAccount;
 

@@ -73,7 +73,7 @@ namespace ledger {
                                           const std::string &accountUid);
 
             void reset(const std::shared_ptr<BitcoinLikeAccount>& account, const std::chrono::system_clock::time_point& toDate) override;
-            std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> synchronize(const std::shared_ptr<BitcoinLikeAccount>& account) override;
+            std::shared_ptr<ProgressNotifier<Unit>> synchronize(const std::shared_ptr<BitcoinLikeAccount>& account) override;
             bool isSynchronizing() const override;
 
             void interpretTransaction(const Transaction& transaction,
@@ -88,9 +88,9 @@ namespace ledger {
         private:
             std::shared_ptr<BlockchainExplorerAccountSynchronizer> getSharedFromThis();
             std::shared_ptr<api::ExecutionContext> getSynchronizerContext();
-            Future<BlockchainExplorerAccountSynchronizationResult> performSynchronization(const std::shared_ptr<BitcoinLikeAccount>& account);
+            Future<Unit> performSynchronization(const std::shared_ptr<BitcoinLikeAccount>& account);
             static void initializeSavedState(Option<BlockchainExplorerAccountSynchronizationSavedState>& savedState, int32_t halfBatchSize);
-            std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> synchronizeAccount(const std::shared_ptr<BitcoinLikeAccount>& account);
+            //std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> synchronizeAccount(const std::shared_ptr<BitcoinLikeAccount>& account);
             Future<Unit> extendKeychain(uint32_t currentBatchIndex, std::shared_ptr<SynchronizationBuddy> buddy);
             Future<std::shared_ptr<BitcoinLikeBlockchainExplorer::Block>> updateCurrentBlock(std::shared_ptr<SynchronizationBuddy> buddy);
             Future<Unit> synchronizeBatches(uint32_t currentBatchIndex, std::shared_ptr<SynchronizationBuddy> buddy);
@@ -101,7 +101,7 @@ namespace ledger {
 
             std::shared_ptr<Preferences> _internalPreferences;
             std::shared_ptr<BitcoinLikeBlockchainExplorer> _explorer;
-            std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> _notifier;
+            std::shared_ptr<ProgressNotifier<Unit>> _notifier;
             std::mutex _lock;
             std::shared_ptr<BitcoinLikeAccount> _currentAccount;
             std::vector<std::string> _addresses;
