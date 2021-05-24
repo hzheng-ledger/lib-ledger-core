@@ -69,6 +69,7 @@
 #include <database/soci-option.h>
 #include <wallet/bitcoin/database/BitcoinLikeOperationDatabaseHelper.hpp>
 #include <wallet/common/database/BulkInsertDatabaseHelper.hpp>
+#include <iostream>
 
 
 namespace ledger {
@@ -124,7 +125,7 @@ namespace ledger {
             std::vector<std::string> recipients;
             recipients.reserve(transaction.outputs.size());
             int result = FLAG_TRANSACTION_IGNORED;
-
+            std::cout << "Find inputs" << std::endl;
             // Find inputs
             for (auto& input : transaction.inputs) {
 
@@ -147,7 +148,7 @@ namespace ledger {
                     }
                 }
             }
-
+            std::cout << "Find outputs" << std::endl;
             // Find outputs
             auto hasSpentNothing = sentAmount == 0L;
             auto outputCount = transaction.outputs.size();
@@ -181,7 +182,7 @@ namespace ledger {
             }
             std::stringstream snds;
             strings::join(senders, snds, ",");
-
+            std::cout << "inflateOperation" << std::endl;
             Operation operation;
             inflateOperation(operation, transaction);
             operation.senders = std::move(senders);
@@ -189,7 +190,7 @@ namespace ledger {
             operation.fees = std::move(BigInt().assignI64(fees));
             operation.trust = std::make_shared<TrustIndicator>();
             operation.date = transaction.receivedAt;
-
+            std::cout << "compute trust" << std::endl;
             // Compute trust
             computeOperationTrust(operation, transaction);
 
@@ -208,7 +209,7 @@ namespace ledger {
                 operation.refreshUid();
                 out.push_back(operation);
             }
-
+            std::cout << "accountOutputs" << std::endl;
             if (accountOutputs.size() > 0) {
                 // Receive
                 BigInt amount;
@@ -237,13 +238,20 @@ namespace ledger {
         }
 
         Try<int> BitcoinLikeAccount::bulkInsert(const std::vector<Operation> &ops) {
+            std::cout << "bulk insert method" << std::endl;
             return Try<int>::from([&] () {
+                std::cout << "sql session" << std::endl;
                 soci::session sql(getWallet()->getDatabase()->getPool());
+                std::cout << "sql transaction" << std::endl;
                 soci::transaction tr(sql);
+                std::cout << "BitcoinLikeOperationDatabaseHelper::bulkInsert" << std::endl;
                 BitcoinLikeOperationDatabaseHelper::bulkInsert(sql, ops);
+                std::cout << "tr.commit" << std::endl;
                 tr.commit();
+                std::cout << "emitNewOperationsEvent" << std::endl;
                 // Emit
                 emitNewOperationsEvent(ops);
+                std::cout << "emitNewOperationsEvent finish" << std::endl;
                 return ops.size();
             });
         }
@@ -589,9 +597,13 @@ namespace ledger {
                                                          const std::shared_ptr<api::StringCallback> &callback) {
             auto self = getSelf();
             _explorer->pushTransaction(transaction).map<std::string>(getContext(), [self, transaction] (const String& seq) -> std::string {
+                std::cout<<"transaction send request finish"<<std::endl;
+                self->logger()->warn("transaction send request finish");
                 //Store newly broadcasted tx in db
                 //First parse it
                 auto txHash = seq.str();
+                std::cout << "got tx hash" << std::endl;
+                self->logger()->warn("got tx hash");
                 auto optimisticUpdate = Try<Unit>::from([&] () -> Unit {
                     //Get last block from DB or cache
                     uint64_t lastBlockHeight = 0;
@@ -602,7 +614,8 @@ namespace ledger {
                     } else {
                         lastBlockHeight = getLastBlockFromDB(sql, self->getWallet()->getCurrency().name);
                     }
-
+                    std::cout << "parseRawSignedTransaction" << std::endl;
+                    self->logger()->warn(" parseRawSignedTransaction");
                     auto tx = BitcoinLikeTransactionApi::parseRawSignedTransaction(self->getWallet()->getCurrency(), transaction, lastBlockHeight);
 
                     //Get a BitcoinLikeBlockchainExplorerTransaction from a BitcoinLikeTransaction
@@ -612,7 +625,8 @@ namespace ledger {
                     txExplorer.receivedAt = std::chrono::system_clock::now();
                     txExplorer.version = tx->getVersion();
                     txExplorer.confirmations = 0;
-
+                    std::cout << "input" << std::endl;
+                    self->logger()->warn(" input");
                     //Inputs
                     auto inputCount = tx->getInputs().size();
                     for (auto index = 0; index < inputCount; index++) {
@@ -633,7 +647,8 @@ namespace ledger {
                         in.address = prevTx.outputs[prevTxOutputIndex].address.getValueOr("");
                         txExplorer.inputs.push_back(in);
                     }
-
+                    std::cout << "output" << std::endl;
+                    self->logger()->warn(" output");
                     //Outputs
                     auto keychain = self->getKeychain();
                     auto outputCount = tx->getOutputs().size();
@@ -648,12 +663,20 @@ namespace ledger {
                         out.address = output->getAddress().value_or("");
                         txExplorer.outputs.push_back(out);
                     }
-
+                    std::cout << "save db" << std::endl;
+                    self->logger()->warn(" save db");
                     //Store in DB
+
                     std::vector<Operation> operations;
+                    std::cout << "operations" << std::endl;
                     self->interpretTransaction(txExplorer, operations);
+                    std::cout << "interpretTransaction finish" << std::endl;
                     self->bulkInsert(operations);
+                    std::cout << "bulkInsert finish" << std::endl;
                     self->emitEventsNow();
+                    std::cout << "saved db" << std::endl;
+                    self->logger()->warn(" saved db");
+
                     return unit;
                 });
 
@@ -661,10 +684,13 @@ namespace ledger {
                 // because the tx was successfully broadcasted to the network,
                 // and the update will occur at next synchro ...
                 // But still let's log that !
+                std::cout << "optimisticUpdate" << std::endl;
+                self->logger()->warn(" optimisticUpdate");
                 if (optimisticUpdate.isFailure()) {
                     self->logger()->warn(" Optimistic update failed for broadcasted transaction : {}", txHash);
                 }
-
+                std::cout << "optimisticUpdate finish" << std::endl;
+                self->logger()->warn(" optimisticUpdate finish");
                 return txHash;
             }).callback(getMainExecutionContext(), callback);
         }
