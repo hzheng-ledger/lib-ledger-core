@@ -91,8 +91,30 @@ namespace ledger {
 
         }
 
-        std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> BlockchainExplorerAccountSynchronizer::synchronize(const std::shared_ptr<BitcoinLikeAccount>& account) {
-            return synchronizeAccount(account);
+        std::shared_ptr<ProgressNotifier<Unit>> BlockchainExplorerAccountSynchronizer::synchronize(const std::shared_ptr<BitcoinLikeAccount>& account) {
+            std::lock_guard<std::mutex> lock(_lock);
+            if (!_currentAccount) {
+                _currentAccount = account;
+                _notifier = std::make_shared<ProgressNotifier<Unit>>();
+                auto self = std::dynamic_pointer_cast<BlockchainExplorerAccountSynchronizer>(getSharedFromThis());
+                performSynchronization(account)
+                    .onComplete(getSynchronizerContext(), [self](const auto& result) {
+                    std::lock_guard<std::mutex> l(self->_lock);
+                    if (result.isFailure()) {
+                        self->_notifier->failure(result.getFailure());
+                    }
+                    else {
+                        self->_notifier->success(unit);
+                    }
+                    self->_notifier = nullptr;
+                    self->_currentAccount = nullptr;
+                        });
+
+            }
+            else if (account != _currentAccount) {
+                throw make_exception(api::ErrorCode::RUNTIME_ERROR, "This synchronizer is already in use");
+            }
+            return _notifier;
         }
 
         bool BlockchainExplorerAccountSynchronizer::isSynchronizing() const {
@@ -345,20 +367,20 @@ namespace ledger {
                     .halfBatchSize = (uint32_t)halfBatchSize;
             }
         };
-
-        std::shared_ptr<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>> BlockchainExplorerAccountSynchronizer::synchronizeAccount(const std::shared_ptr<BitcoinLikeAccount>& account) {
+        /*
+        std::shared_ptr<ProgressNotifier<Unit>> synchronizeAccount(const std::shared_ptr<Account>& account) {
             std::lock_guard<std::mutex> lock(_lock);
             if (!_currentAccount) {
                 _currentAccount = account;
-                _notifier = std::make_shared<ProgressNotifier<BlockchainExplorerAccountSynchronizationResult>>();
+                _notifier = std::make_shared<ProgressNotifier<Unit>>();
                 auto self = getSharedFromThis();
-                performSynchronization(account).onComplete(getSynchronizerContext(), [self](auto const& result) {
+                performSynchronization(account).onComplete(getSynchronizerContext(), [self](const Try<Unit>& result) {
                     std::lock_guard<std::mutex> l(self->_lock);
                     if (result.isFailure()) {
                         self->_notifier->failure(result.getFailure());
                     }
                     else {
-                        self->_notifier->success(result.getValue());
+                        self->_notifier->success(unit);
                     }
                     self->_notifier = nullptr;
                     self->_currentAccount = nullptr;
@@ -369,10 +391,10 @@ namespace ledger {
                 throw make_exception(api::ErrorCode::RUNTIME_ERROR, "This synchronizer is already in use");
             }
             return _notifier;
-        };
+        };*/
 
 
-        Future<BlockchainExplorerAccountSynchronizationResult> BlockchainExplorerAccountSynchronizer::performSynchronization(const std::shared_ptr<BitcoinLikeAccount>& account)
+        Future<Unit> BlockchainExplorerAccountSynchronizer::performSynchronization(const std::shared_ptr<BitcoinLikeAccount>& account)
         {
             auto buddy = makeSynchronizationBuddy();
             buddy->account = account;
@@ -468,14 +490,14 @@ namespace ledger {
                 }).template flatMap<Unit>(account->getContext(), [self, buddy](auto) {
                     std::cout << "synchronizeMempool" << std::endl;
                     return self->synchronizeMempool(buddy);
-                    }).template map<BlockchainExplorerAccountSynchronizationResult>(ImmediateExecutionContext::INSTANCE, [self, buddy](const Unit&) {
+                    }).template map<Unit>(ImmediateExecutionContext::INSTANCE, [self, buddy](const Unit&) {
                         std::cout << "duration" << std::endl;
                         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
                             (DateUtils::now() - buddy->startDate.time_since_epoch()).time_since_epoch());
                         std::cout << "End synchronization" << std::endl;
                         buddy->logger->info("End synchronization for account#{} of wallet {} in {}", buddy->account->getIndex(),
                             buddy->account->getWallet()->getName(), DurationUtils::formatDuration(duration));
-
+                        /*
                         auto const& batches = buddy->savedState.getValue().batches;
 
                         // get the last block height treated during the synchronization
@@ -493,18 +515,18 @@ namespace ledger {
                                 std::cout << "block height" << std::endl;
                                 return block.height;
                                 }).getValueOr(0);
-
+                                */
                                 self->_currentAccount = nullptr;
                                 std::cout << "End!!" << std::endl;
-                                return buddy->context;
-                        }).recover(ImmediateExecutionContext::INSTANCE, [self, buddy](const Exception& ex) {
+                                return unit;//buddy->context;
+                        }).recoverWith(ImmediateExecutionContext::INSTANCE, [self, buddy](const Exception& ex) -> Future<Unit> {
                             std::cout << "Error synchronization" << std::endl;
                             auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 (DateUtils::now() - buddy->startDate.time_since_epoch()).time_since_epoch());
                             buddy->logger->error("Error during during synchronization for account#{} of wallet {} in {} ms", buddy->account->getIndex(),
                                 buddy->account->getWallet()->getName(), duration.count());
                             buddy->logger->error("Due to {}, {}", api::to_string(ex.getErrorCode()), ex.getMessage());
-                            return buddy->context;
+                            return self->recoverFromFailedSynchronization(buddy);
                             });
         };
 

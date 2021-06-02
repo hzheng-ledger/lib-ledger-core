@@ -69,7 +69,6 @@
 #include <database/soci-option.h>
 #include <wallet/bitcoin/database/BitcoinLikeOperationDatabaseHelper.hpp>
 #include <wallet/common/database/BulkInsertDatabaseHelper.hpp>
-#include <iostream>
 
 
 namespace ledger {
@@ -305,7 +304,7 @@ namespace ledger {
 
             auto startTime = DateUtils::now();
             eventPublisher->postSticky(std::make_shared<Event>(api::EventCode::SYNCHRONIZATION_STARTED, api::DynamicObject::newInstance()), 0);
-            future.onComplete(getContext(), [eventPublisher, self, wasEmpty, startTime] (auto const &result) {
+            future.onComplete(getContext(), [eventPublisher, self, wasEmpty, startTime](const Try<Unit>& result) {
                 auto isEmpty = self->checkIfWalletIsEmpty();
                 api::EventCode code;
                 auto payload = std::make_shared<DynamicObject>();
@@ -315,15 +314,6 @@ namespace ledger {
                     code = !isEmpty && wasEmpty ? api::EventCode::SYNCHRONIZATION_SUCCEED_ON_PREVIOUSLY_EMPTY_ACCOUNT
                                                 : api::EventCode::SYNCHRONIZATION_SUCCEED;
                     self->getWallet()->invalidateBalanceCache(self->getIndex());
-
-                    auto const context = result.getValue();
-
-                    payload->putInt(api::Account::EV_SYNC_LAST_BLOCK_HEIGHT, static_cast<int32_t>(context.lastBlockHeight));
-                    payload->putInt(api::Account::EV_SYNC_NEW_OPERATIONS, static_cast<int32_t>(context.newOperations));
-
-                    if (context.reorgBlockHeight) {
-                        payload->putInt(api::Account::EV_SYNC_REORG_BLOCK_HEIGHT, static_cast<int32_t>(context.reorgBlockHeight.getValue()));
-                    }
                 } else {
                     code = api::EventCode::SYNCHRONIZATION_FAILED;
                     payload->putString(api::Account::EV_SYNC_ERROR_CODE, api::to_string(result.getFailure().getErrorCode()));
